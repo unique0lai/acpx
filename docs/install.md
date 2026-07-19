@@ -1,13 +1,15 @@
 ---
 title: Install
-description: Install acpx globally with npm, run it ad-hoc with npx, or build from source. Covers Node version, PATH, and updating.
+description: Install acpx globally with npm, run it ad-hoc with npx or Bun, or build from source. Covers runtime versions, PATH, and updating.
 ---
 
-`acpx` is published to npm as [`acpx`](https://www.npmjs.com/package/acpx). It is a single Node CLI — no service to host, no daemon to manage. Session state lives under `~/.acpx/`.
+`acpx` is published to npm as [`acpx`](https://www.npmjs.com/package/acpx). It runs on Node.js or Bun with no service to host and no daemon to manage. Session state lives under `~/.acpx/`.
 
 ## Requirements
 
-- Node.js **22.13 or newer** (see `engines.node` in `package.json`)
+- One supported JavaScript runtime:
+  - Node.js **22.13 or newer** (see `engines.node` in `package.json`)
+  - Bun **1.3.14 or newer** (see `engines.bun` in `package.json`)
 - pnpm **10.33.2** for source builds
 - The underlying coding agent CLI you plan to talk to (Codex, Claude, etc.)
 
@@ -45,6 +47,21 @@ npx acpx@latest codex 'fix the failing tests'
 ```
 
 `npx` works for one-off use but pays a small startup cost on every invocation. For repeated session reuse, prefer the global install.
+
+## Run with Bun
+
+Use `--bun` so Bun overrides the package's Node shebang:
+
+```bash
+bunx --bun acpx@latest codex 'fix the failing tests'
+```
+
+When acpx runs on Bun, built-in commands that normally use `npx` are automatically translated to
+`bun x --bun`. Node and npm are not required for those adapters. Native CLI and `uvx`-backed
+agents keep their documented prerequisites.
+
+The source build and release toolchain remains pinned to pnpm and Node.js; Bun support applies to
+the published CLI runtime.
 
 ## Update
 

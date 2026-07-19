@@ -33,7 +33,7 @@ import {
   type WriteTextFileResponse,
   type SessionConfigOption,
 } from "@agentclientprotocol/sdk";
-import { resolveBuiltInAgentLaunch } from "../agent-registry.js";
+import { resolveBuiltInAgentLaunch, resolveRuntimePackageRunner } from "../agent-registry.js";
 import { TimeoutError, withTimeout } from "../async-control.js";
 import {
   AgentDisconnectedError,
@@ -654,8 +654,11 @@ export class AcpClient {
   private async resolveAgentLaunchPlan(): Promise<AgentLaunchPlan> {
     const configuredCommand = splitCommandLine(this.options.agentCommand);
     const resolvedBuiltInLaunch = resolveBuiltInAgentLaunch(this.options.agentCommand);
-    const spawnCommand = resolvedBuiltInLaunch?.command ?? configuredCommand.command;
+    let spawnCommand = resolvedBuiltInLaunch?.command ?? configuredCommand.command;
     let args = resolvedBuiltInLaunch?.args ?? configuredCommand.args;
+    const runtimePackageRunner = resolveRuntimePackageRunner(spawnCommand, args);
+    spawnCommand = runtimePackageRunner.command;
+    args = runtimePackageRunner.args;
     args = await resolveGeminiCommandArgs(spawnCommand, args);
     if (isQoderAcpCommand(spawnCommand, args)) {
       args = buildQoderAcpCommandArgs(args, this.options);

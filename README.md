@@ -121,7 +121,17 @@ Or run without installing:
 npx acpx@latest codex "fix the tests"
 ```
 
-Session state lives in `~/.acpx/` either way. Global install is a little faster, but `npx acpx@latest` works fine.
+With Bun 1.3.14 or newer:
+
+```bash
+bunx --bun acpx@latest codex "fix the tests"
+```
+
+The `--bun` flag is required because package executables use a Node shebang by default. When
+acpx runs on Bun, npm-backed ACP adapters are fetched and launched with Bun automatically.
+
+Session state lives in `~/.acpx/` in every mode. Global install is a little faster, while `npx`
+and `bunx --bun` work well for ad-hoc runs.
 
 ## Agent prerequisites
 

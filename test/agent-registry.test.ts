@@ -12,6 +12,7 @@ import {
   resolveInstalledBuiltInAgentLaunch,
   resolvePackageExecBuiltInAgentLaunch,
   resolveAgentCommand,
+  resolveRuntimePackageRunner,
 } from "../src/agent-registry.js";
 
 test("resolveAgentCommand maps known agents to commands", () => {
@@ -107,6 +108,46 @@ test("npm-backed built-ins use current adapter package ranges", () => {
   assert.equal(AGENT_REGISTRY.pi, "npx pi-acp@^0.0.26");
 });
 
+test("resolveRuntimePackageRunner replaces npx with Bun's package runner", () => {
+  assert.deepEqual(
+    resolveRuntimePackageRunner("npx", ["-y", "opencode-ai", "acp"], {
+      execPath: "/tmp/bun",
+      runtime: "bun",
+    }),
+    {
+      command: "/tmp/bun",
+      args: ["x", "--bun", "opencode-ai", "acp"],
+    },
+  );
+  assert.deepEqual(
+    resolveRuntimePackageRunner("npx", ["--yes", "custom-agent", "--", "-y"], {
+      execPath: "/tmp/bun",
+      runtime: "bun",
+    }),
+    {
+      command: "/tmp/bun",
+      args: ["x", "--bun", "custom-agent", "--", "-y"],
+    },
+  );
+});
+
+test("resolveRuntimePackageRunner preserves Node and non-npx commands", () => {
+  assert.deepEqual(resolveRuntimePackageRunner("npx", ["-y", "pi-acp"], { runtime: "node" }), {
+    command: "npx",
+    args: ["-y", "pi-acp"],
+  });
+  assert.deepEqual(
+    resolveRuntimePackageRunner("custom-agent", ["--stdio"], {
+      execPath: "/tmp/bun",
+      runtime: "bun",
+    }),
+    {
+      command: "custom-agent",
+      args: ["--stdio"],
+    },
+  );
+});
+
 test("resolveInstalledBuiltInAgentLaunch uses a locally installed adapter when available", (t) => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "acpx-agent-registry-"));
   t.after(() => {
@@ -176,6 +217,18 @@ test("resolvePackageExecBuiltInAgentLaunch bridges built-ins through the current
     packageRange: BUILT_IN_AGENT_PACKAGES.codex.packageRange,
     npmCliPath,
   });
+});
+
+test("resolveBuiltInAgentLaunch skips Node's npm CLI under Bun", () => {
+  assert.equal(
+    resolveBuiltInAgentLaunch(AGENT_REGISTRY.codex, {
+      existsSync: () => true,
+      execPath: "/tmp/bun",
+      resolveNpmCliPath: () => "/tmp/npm-cli.js",
+      runtime: "bun",
+    }),
+    undefined,
+  );
 });
 
 test("resolveBuiltInAgentLaunch accepts the legacy Claude npm exec default", () => {

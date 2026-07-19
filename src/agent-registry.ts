@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { detectJavaScriptRuntime, type JavaScriptRuntime } from "./javascript-runtime.js";
 
 const ACP_ADAPTER_PACKAGE_RANGES = {
   pi: "^0.0.26",
@@ -34,7 +35,17 @@ type BuiltInLaunchResolverOptions = {
   resolvePackageRoot?: (packageName: string) => string;
   execPath?: string;
   resolveNpmCliPath?: (execPath: string) => string;
+  runtime?: JavaScriptRuntime;
 };
+
+type PackageRunnerOptions = {
+  execPath?: string;
+  runtime?: JavaScriptRuntime;
+};
+
+function stripNpxConfirmationFlag(args: readonly string[]): string[] {
+  return args[0] === "-y" || args[0] === "--yes" ? args.slice(1) : [...args];
+}
 
 export const AGENT_REGISTRY: Record<string, string> = {
   pi: `npx pi-acp@${ACP_ADAPTER_PACKAGE_RANGES.pi}`,
@@ -108,6 +119,22 @@ export function resolveAgentCommand(agentName: string, overrides?: Record<string
   const normalized = normalizeAgentName(agentName);
   const registry = mergeAgentRegistry(overrides);
   return registry[normalized] ?? registry[AGENT_ALIASES[normalized] ?? normalized] ?? agentName;
+}
+
+export function resolveRuntimePackageRunner(
+  command: string,
+  args: readonly string[],
+  options: PackageRunnerOptions = {},
+): { command: string; args: string[] } {
+  const executable = command.replaceAll("\\", "/").split("/").at(-1)?.toLowerCase();
+  if ((options.runtime ?? detectJavaScriptRuntime()) !== "bun" || executable !== "npx") {
+    return { command, args: [...args] };
+  }
+
+  return {
+    command: options.execPath ?? process.execPath,
+    args: ["x", "--bun", ...stripNpxConfirmationFlag(args)],
+  };
 }
 
 export function findBuiltInAgentPackage(agentCommand: string): BuiltInAgentPackageSpec | undefined {
@@ -288,10 +315,11 @@ export function resolveBuiltInAgentLaunch(
   agentCommand: string,
   options: BuiltInLaunchResolverOptions = {},
 ): BuiltInAgentLaunch | undefined {
-  return (
-    resolveInstalledBuiltInAgentLaunch(agentCommand, options) ??
-    resolvePackageExecBuiltInAgentLaunch(agentCommand, options)
-  );
+  const installedLaunch = resolveInstalledBuiltInAgentLaunch(agentCommand, options);
+  if (installedLaunch || (options.runtime ?? detectJavaScriptRuntime()) === "bun") {
+    return installedLaunch;
+  }
+  return resolvePackageExecBuiltInAgentLaunch(agentCommand, options);
 }
 
 export function listBuiltInAgents(overrides?: Record<string, string>): string[] {

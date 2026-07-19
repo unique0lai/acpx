@@ -13,6 +13,7 @@ import {
   type GlobalFlags,
 } from "../cli/flags.js";
 import { type FlowDefinition, FlowRunner } from "../flows.js";
+import { detectJavaScriptRuntime } from "../javascript-runtime.js";
 import { loadPermissionPolicySpec } from "../permission-policy.js";
 import { permissionModeSatisfies } from "../permissions.js";
 import type { PermissionMode } from "../types.js";
@@ -212,6 +213,13 @@ async function loadFlowRuntimeModule(
   default?: unknown;
   "module.exports"?: unknown;
 }> {
+  if (detectJavaScriptRuntime() === "bun" && isTypeScriptModuleExtension(extension)) {
+    return (await import(flowUrl)) as {
+      default?: unknown;
+      "module.exports"?: unknown;
+    };
+  }
+
   if (extension === ".ts" || extension === ".tsx" || extension === ".cts") {
     const { register } = (await import("tsx/cjs/api")) as {
       register: (options: { namespace: string }) => {
@@ -258,6 +266,12 @@ async function loadFlowRuntimeModule(
     default?: unknown;
     "module.exports"?: unknown;
   };
+}
+
+function isTypeScriptModuleExtension(extension: string): boolean {
+  return (
+    extension === ".ts" || extension === ".tsx" || extension === ".mts" || extension === ".cts"
+  );
 }
 
 function findFlowDefinition(module: {

@@ -47,6 +47,14 @@ npm i -g acpx
 
 For normal session reuse, prefer a global install over `npx`.
 
+To run acpx on Bun 1.3.14 or newer:
+
+```bash
+bunx --bun acpx@latest
+```
+
+Under Bun, built-in `npx` adapter commands are executed through `bun x --bun` automatically.
+
 ## Command model
 
 `prompt` is the default verb.

@@ -31,6 +31,9 @@ The default agent for top-level commands like `acpx exec â€¦` and `acpx prompt â
 | `qwen`       | `qwen --acp`                                   | [Qwen Code](https://github.com/QwenLM/qwen-code)                                                                |
 | `trae`       | `traecli acp serve`                            | [Trae CLI](https://docs.trae.cn/cli)                                                                            |
 
+When acpx itself runs on Bun, `npx`-backed commands in this table are launched through
+`bun x --bun` instead. The configured command and persisted session identity remain unchanged.
+
 `factory-droid` and `factorydroid` also resolve to the built-in `droid` adapter.
 
 ## Common shape

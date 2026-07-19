@@ -11,6 +11,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
+  BUN_VERSION: 1.3.14
   NODE_VERSION: 24
   PNPM_VERSION: 10.33.2
 
@@ -107,6 +108,9 @@ jobs:
             command: pnpm run lint
           - name: Build
             command: pnpm run build
+          - name: Bun
+            bun: true
+            command: pnpm run test:bun
           - name: Conformance Smoke
             command: pnpm run conformance:run -- --case acp.v1.initialize.handshake
           - name: Test
@@ -140,6 +144,12 @@ jobs:
           node-version: ${{ matrix.node_version || env.NODE_VERSION }}
           check-latest: true
           cache: pnpm
+
+      - name: Setup Bun
+        if: matrix.bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

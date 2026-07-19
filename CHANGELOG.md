@@ -12,6 +12,9 @@ Repo: https://github.com/openclaw/acpx
 
 ### Fixes
 
+- Runtime/Bun: support Bun 1.3.14+ for packaged CLI execution, TypeScript flow loading,
+  npm-backed adapter launches, ACP stdio, and persistent queue owners.
+
 ## 2026.7.4 (v0.12.0)
 
 ### Changes
