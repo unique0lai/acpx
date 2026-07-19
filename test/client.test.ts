@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { PassThrough } from "node:stream";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import type { RequestPermissionRequest, RequestPermissionResponse } from "@agentclientprotocol/sdk";
 import {
   AcpClient,
@@ -32,6 +33,52 @@ test("parseAcpJsonMessageLine preserves object-shaped protocol values", () => {
     jsonrpc: "2.0",
     method: "session/update",
   });
+});
+
+test("AcpClient keeps its raw hook across handler resets and assigns a new epoch per process", async (t) => {
+  const mockAgentPath = fileURLToPath(new URL("./mock-agent.js", import.meta.url));
+  const observed: Array<{ direction: string; connectionEpoch: string }> = [];
+  const client = new AcpClient({
+    agentCommand: `node ${JSON.stringify(mockAgentPath)}`,
+    cwd: process.cwd(),
+    permissionMode: "approve-reads",
+    onAcpMessage: (direction, _message, connectionEpoch) => {
+      observed.push({ direction, connectionEpoch });
+    },
+  });
+  t.after(async () => {
+    await client.close();
+  });
+
+  client.setEventHandlers({ onSessionUpdate: () => {} });
+  await client.start();
+  await client.createSession();
+  const firstConnectionMessages = observed.splice(0);
+  const firstEpochs = new Set(firstConnectionMessages.map((entry) => entry.connectionEpoch));
+  assert.equal(firstEpochs.size, 1);
+  assert.deepEqual(
+    new Set(firstConnectionMessages.map((entry) => entry.direction)),
+    new Set(["inbound", "outbound"]),
+  );
+
+  await client.close();
+  client.clearEventHandlers();
+  await client.start();
+  await client.createSession();
+  const secondEpochs = new Set(observed.map((entry) => entry.connectionEpoch));
+  assert.equal(secondEpochs.size, 1);
+
+  const [firstEpoch] = firstEpochs;
+  const [secondEpoch] = secondEpochs;
+  assert.match(
+    firstEpoch ?? "",
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
+  assert.match(
+    secondEpoch ?? "",
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
+  assert.notEqual(firstEpoch, secondEpoch);
 });
 
 type ClientInternals = {

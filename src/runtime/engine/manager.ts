@@ -571,7 +571,11 @@ export class AcpRuntimeManager {
   ) {}
 
   private createClient(options: ConstructorParameters<typeof AcpClient>[0]): AcpClient {
-    return this.deps.clientFactory?.(options) ?? new AcpClient(options);
+    const clientOptions = {
+      ...options,
+      onAcpMessage: this.options.onAcpMessage,
+    };
+    return this.deps.clientFactory?.(clientOptions) ?? new AcpClient(clientOptions);
   }
 
   private async readPendingPersistentClient(
@@ -1309,6 +1313,25 @@ export class AcpRuntimeManager {
           : {}),
       },
     };
+  }
+
+  async verifySession(handle: AcpRuntimeHandle): Promise<void> {
+    const record = await this.requireRecord(handle.acpxRecordId ?? handle.sessionKey);
+    const snapshot = structuredClone(record);
+    await withConnectedSession({
+      sessionRecordId: snapshot.acpxRecordId,
+      loadRecord: async () => structuredClone(snapshot),
+      saveRecord: async () => {},
+      createClient: (options) => this.createClient(options),
+      mcpServers: [...(this.options.mcpServers ?? [])],
+      permissionMode: this.options.permissionMode,
+      nonInteractivePermissions: this.options.nonInteractivePermissions,
+      onPermissionRequest: this.options.onPermissionRequest,
+      verbose: this.options.verbose,
+      timeoutMs: this.options.timeoutMs,
+      resumePolicy: "same-session-only",
+      run: async () => {},
+    });
   }
 
   async setMode(

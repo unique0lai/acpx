@@ -1,5 +1,7 @@
 import type { ToolCallContent, ToolCallLocation, ToolKind } from "@agentclientprotocol/sdk";
 import type {
+  AcpJsonRpcMessage,
+  AcpMessageDirection,
   AcpPermissionDecision,
   AcpPermissionRequest,
   McpServer,
@@ -257,6 +259,11 @@ export interface AcpRuntimeTurn {
 
 export interface AcpRuntime {
   ensureSession(input: AcpRuntimeEnsureInput): Promise<AcpRuntimeHandle>;
+  /**
+   * Verify that a persistent handle can reconnect to its exact provider
+   * session without creating a replacement session or sending a prompt.
+   */
+  verifySession(input: { handle: AcpRuntimeHandle }): Promise<void>;
   startTurn(input: AcpRuntimeTurnInput): AcpRuntimeTurn;
   /**
    * Compatibility adapter for consumers that expect terminal status in the
@@ -301,6 +308,16 @@ export type AcpRuntimeOptions = {
   timeoutMs?: number;
   probeAgent?: string;
   verbose?: boolean;
+  /**
+   * Observe unmodified ACP JSON-RPC messages at the transport boundary.
+   * Consumers are responsible for copying or durably persisting messages
+   * before returning; the runtime does not normalize this callback payload.
+   */
+  onAcpMessage?: (
+    direction: AcpMessageDirection,
+    message: AcpJsonRpcMessage,
+    connectionEpoch: string,
+  ) => void;
   onPermissionRequest?: (
     req: AcpPermissionRequest,
     ctx: { signal: AbortSignal },

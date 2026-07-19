@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess, type ChildProcessByStdio } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { Readable, Writable } from "node:stream";
 import {
   ClientSideConnection,
@@ -58,6 +59,8 @@ import { extractRuntimeSessionId } from "../session/runtime-session-id.js";
 import { buildSpawnCommandOptions } from "../spawn-command-options.js";
 import type {
   AcpClientOptions,
+  AcpJsonRpcMessage,
+  AcpMessageDirection,
   NonInteractivePermissionPolicy,
   PermissionMode,
   PermissionStats,
@@ -407,6 +410,7 @@ function createNdJsonMessageStream(
 
 export class AcpClient {
   private options: AcpClientOptions;
+  private readonly rawAcpMessageHandler: AcpClientOptions["onAcpMessage"];
   private connection?: ClientSideConnection;
   private agent?: ChildProcessByStdio<Writable, Readable, Readable>;
   private initResult?: InitializeResponse;
@@ -453,8 +457,8 @@ export class AcpClient {
       cwd: asAbsoluteCwd(options.cwd),
       authPolicy: options.authPolicy ?? "skip",
     };
+    this.rawAcpMessageHandler = options.onAcpMessage;
     this.eventHandlers = {
-      onAcpMessage: this.options.onAcpMessage,
       onAcpOutputMessage: this.options.onAcpOutputMessage,
       onSessionUpdate: this.options.onSessionUpdate,
       onClientOperation: this.options.onClientOperation,
@@ -628,8 +632,10 @@ export class AcpClient {
 
     const input = Writable.toWeb(child.stdin);
     const output = Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>;
+    const connectionEpoch = randomUUID();
     const stream = this.createTappedStream(
       createNdJsonMessageStream(this.options.agentCommand, input, output),
+      connectionEpoch,
     );
 
     const connection = this.createConnection(stream, launch);
@@ -857,15 +863,28 @@ export class AcpClient {
     throw normalizedError;
   }
 
-  private createTappedStream(base: {
-    readable: ReadableStream<AnyMessage>;
-    writable: WritableStream<AnyMessage>;
-  }): {
+  private createTappedStream(
+    base: {
+      readable: ReadableStream<AnyMessage>;
+      writable: WritableStream<AnyMessage>;
+    },
+    connectionEpoch: string,
+  ): {
     readable: ReadableStream<AnyMessage>;
     writable: WritableStream<AnyMessage>;
   } {
     const onAcpMessage = () => this.eventHandlers.onAcpMessage;
+    const onRawAcpMessage = () => this.rawAcpMessageHandler;
     const onAcpOutputMessage = () => this.eventHandlers.onAcpOutputMessage;
+
+    const emitAcpMessage = (direction: AcpMessageDirection, message: AcpJsonRpcMessage): void => {
+      const rawHandler = onRawAcpMessage();
+      const eventHandler = onAcpMessage();
+      rawHandler?.(direction, message, connectionEpoch);
+      if (eventHandler !== rawHandler) {
+        eventHandler?.(direction, message, connectionEpoch);
+      }
+    };
 
     const shouldSuppressInboundReplaySessionUpdate = (message: AnyMessage): boolean => {
       return this.suppressReplaySessionUpdateMessages && isSessionUpdateNotification(message);
@@ -885,7 +904,7 @@ export class AcpClient {
             }
             if (!shouldSuppressInboundReplaySessionUpdate(value)) {
               onAcpOutputMessage()?.("inbound", value);
-              onAcpMessage()?.("inbound", value);
+              emitAcpMessage("inbound", value);
             }
             controller.enqueue(value);
           }
@@ -899,7 +918,7 @@ export class AcpClient {
     const writable = new WritableStream<AnyMessage>({
       async write(message) {
         onAcpOutputMessage()?.("outbound", message);
-        onAcpMessage()?.("outbound", message);
+        emitAcpMessage("outbound", message);
         const writer = base.writable.getWriter();
         try {
           await writer.write(message);

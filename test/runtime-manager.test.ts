@@ -2475,6 +2475,125 @@ test("AcpRuntimeManager maps audio attachments into ACP prompt blocks", async ()
   ]);
 });
 
+test("AcpRuntimeManager verifySession loads the exact provider session without persisting changes", async () => {
+  const record = makeSessionRecord({
+    acpxRecordId: "imported-session",
+    acpSessionId: "provider-session",
+    agentCommand: "codex --acp",
+    cwd: "/workspace",
+    importedFrom: {
+      recordId: "source-session",
+      cwdOriginal: "/source-workspace",
+      exportedBy: "bkmai",
+      exportedAt: "2026-01-01T00:00:00.000Z",
+    },
+  });
+  const store = new InMemorySessionStore([record]);
+  let startCalls = 0;
+  let loadCalls = 0;
+  let createCalls = 0;
+  let closeCalls = 0;
+  const manager = new AcpRuntimeManager(
+    createRuntimeOptions({ cwd: "/workspace", sessionStore: store }),
+    {
+      clientFactory: () =>
+        ({
+          start: async () => {
+            startCalls += 1;
+          },
+          close: async () => {
+            closeCalls += 1;
+          },
+          createSession: async () => {
+            createCalls += 1;
+            return { sessionId: "unexpected-fresh-session" };
+          },
+          loadSession: async () => ({ agentSessionId: "unused" }),
+          hasReusableSession: () => false,
+          supportsLoadSession: () => true,
+          supportsResumeSession: () => false,
+          loadSessionWithOptions: async (sessionId: string, cwd: string, options: unknown) => {
+            loadCalls += 1;
+            assert.equal(sessionId, "provider-session");
+            assert.equal(cwd, "/workspace");
+            assert.deepEqual(options, { suppressReplayUpdates: true });
+            return { agentSessionId: "verified-agent-session" };
+          },
+          getAgentLifecycleSnapshot: () => ({ running: true }),
+          requestCancelActivePrompt: async () => false,
+          hasActivePrompt: () => false,
+          setSessionMode: async () => {},
+          setSessionModel: async () => {},
+          setSessionConfigOption: async () => {},
+        }) as never,
+    },
+  );
+
+  await manager.verifySession(createHandle("imported-session"));
+
+  assert.equal(startCalls, 1);
+  assert.equal(loadCalls, 1);
+  assert.equal(createCalls, 0);
+  assert.equal(closeCalls, 1);
+  assert.deepEqual(store.savedRecordIds, []);
+  assert.equal((await store.load("imported-session"))?.agentSessionId, undefined);
+});
+
+test("AcpRuntimeManager verifySession rejects inaccessible provider sessions without fallback", async () => {
+  const record = makeSessionRecord({
+    acpxRecordId: "unavailable-import",
+    acpSessionId: "missing-provider-session",
+    agentCommand: "codex --acp",
+    cwd: "/workspace",
+    importedFrom: {
+      recordId: "source-session",
+      cwdOriginal: "/source-workspace",
+      exportedBy: "bkmai",
+      exportedAt: "2026-01-01T00:00:00.000Z",
+    },
+  });
+  const store = new InMemorySessionStore([record]);
+  let createCalls = 0;
+  let closeCalls = 0;
+  const manager = new AcpRuntimeManager(
+    createRuntimeOptions({ cwd: "/workspace", sessionStore: store }),
+    {
+      clientFactory: () =>
+        ({
+          start: async () => {},
+          close: async () => {
+            closeCalls += 1;
+          },
+          createSession: async () => {
+            createCalls += 1;
+            return { sessionId: "unexpected-fresh-session" };
+          },
+          loadSession: async () => ({ agentSessionId: "unused" }),
+          hasReusableSession: () => false,
+          supportsLoadSession: () => true,
+          supportsResumeSession: () => false,
+          loadSessionWithOptions: async () => {
+            throw new Error("provider session is unavailable on this node");
+          },
+          getAgentLifecycleSnapshot: () => ({ running: true }),
+          requestCancelActivePrompt: async () => false,
+          hasActivePrompt: () => false,
+          setSessionMode: async () => {},
+          setSessionModel: async () => {},
+          setSessionConfigOption: async () => {},
+        }) as never,
+    },
+  );
+
+  await assert.rejects(
+    async () => await manager.verifySession(createHandle("unavailable-import")),
+    /Persistent ACP session missing-provider-session could not be resumed: provider session is unavailable on this node/,
+  );
+  assert.equal(createCalls, 0);
+  assert.equal(closeCalls, 1);
+  assert.deepEqual(store.savedRecordIds, []);
+});
+
 test("AcpRuntimeManager fails persistent turns clearly when session reuse is unavailable", async () => {
   const record = makeSessionRecord({
     acpxRecordId: "persistent-session",

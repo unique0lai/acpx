@@ -87,11 +87,15 @@ test("AcpxRuntime delegates session lifecycle to the runtime manager", async () 
   let closedStreamRequestId: string | undefined;
   let cancelCalls = 0;
   let managerCancelCalls = 0;
+  let verifiedRecordId: string | undefined;
   let closeDiscardPersistentState: boolean | undefined;
   const manager = {
     ensureSession: async (input: { mode: string }) => {
       ensuredMode = input.mode;
       return record;
+    },
+    verifySession: async (handle: { acpxRecordId?: string }) => {
+      verifiedRecordId = handle.acpxRecordId;
     },
     startTurn(input: { mode: string; sessionMode: string; timeoutMs?: number; requestId: string }) {
       turnMode = input.mode;
@@ -197,6 +201,7 @@ test("AcpxRuntime delegates session lifecycle to the runtime manager", async () 
   ]);
 
   await runtime.getStatus({ handle });
+  await runtime.verifySession({ handle });
   await runtime.setMode({ handle, mode: "architect" });
   await runtime.setConfigOption({ handle, key: "approval", value: "manual" });
   await runtime.cancel({ handle, reason: "legacy cancel" });
@@ -206,6 +211,7 @@ test("AcpxRuntime delegates session lifecycle to the runtime manager", async () 
   assert.equal(closedStreamRequestId, "req-1");
   assert.equal(cancelCalls, 1);
   assert.equal(managerCancelCalls, 1);
+  assert.equal(verifiedRecordId, "agent:codex:acp:test");
   assert.equal(closeDiscardPersistentState, true);
 });
 
@@ -223,9 +229,16 @@ test("createFileSessionStore persists records inside the provided state director
 
   await store.save(record);
   const loaded = await store.load("agent:codex:acp:stored");
+  const expectedEventLogPath = path.join(
+    stateDir,
+    "sessions",
+    "agent%3Acodex%3Aacp%3Astored.stream.ndjson",
+  );
 
   assert.equal(loaded?.acpxRecordId, "agent:codex:acp:stored");
   assert.equal(loaded?.acpSessionId, "sid-stored");
+  assert.equal(record.eventLog.active_path, expectedEventLogPath);
+  assert.equal(loaded?.eventLog.active_path, expectedEventLogPath);
   assert.equal(
     await fs
       .readFile(path.join(stateDir, "sessions", "agent%3Acodex%3Aacp%3Astored.json"), "utf8")

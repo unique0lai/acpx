@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { z, ZodError } from "zod";
 import { AcpxOperationalError } from "../errors.js";
+import { createFileSessionStore } from "../runtime/public/file-session-store.js";
 import type { AcpJsonRpcMessage, SessionRecord } from "../types.js";
 import { defaultSessionEventLog, sessionEventActivePath } from "./event-log.js";
 import {
@@ -41,6 +42,8 @@ export type ImportSessionOptions = {
   newCwd?: string;
   expectedAgentName?: string;
   expectedAgentCommand?: string;
+  /** Store imported records beside an embedded runtime store instead of ~/.acpx. */
+  stateDir?: string;
 };
 
 class SessionImportError extends AcpxOperationalError {
@@ -225,12 +228,50 @@ function commandLooksLikeBuiltInAgent(command: string, agentName: string): boole
   }
 }
 
-async function assertDestinationScopeAvailable(record: SessionRecord): Promise<void> {
-  const existing = await findSession({
-    agentCommand: record.agentCommand,
-    cwd: record.cwd,
-    name: record.name,
+async function recordsInStateDir(stateDir: string): Promise<SessionRecord[]> {
+  const sessionsDir = path.join(path.resolve(stateDir), "sessions");
+  const entries = await fs.readdir(sessionsDir, { withFileTypes: true }).catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return [];
+    }
+    throw error;
   });
+  const records: SessionRecord[] = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".json") || entry.name === "index.json") {
+      continue;
+    }
+    try {
+      const parsed = parseSessionRecord(
+        JSON.parse(await fs.readFile(path.join(sessionsDir, entry.name), "utf8")),
+      );
+      if (parsed) {
+        records.push(parsed);
+      }
+    } catch {
+      // Match the normal repository's tolerance for malformed cache entries.
+    }
+  }
+  return records;
+}
+
+async function destinationRecords(stateDir: string | undefined): Promise<SessionRecord[]> {
+  return stateDir ? await recordsInStateDir(stateDir) : await listSessions();
+}
+
+async function assertDestinationScopeAvailable(
+  record: SessionRecord,
+  stateDir: string | undefined,
+): Promise<void> {
+  const existing = stateDir
+    ? (await destinationRecords(stateDir)).find(
+        (session) =>
+          session.agentCommand === record.agentCommand &&
+          session.cwd === record.cwd &&
+          session.name === record.name &&
+          !session.closed,
+      )
+    : await findSession({ agentCommand: record.agentCommand, cwd: record.cwd, name: record.name });
   if (!existing) {
     return;
   }
@@ -240,8 +281,11 @@ async function assertDestinationScopeAvailable(record: SessionRecord): Promise<v
   );
 }
 
-async function assertProviderSessionAvailable(record: SessionRecord): Promise<void> {
-  const existing = (await listSessions()).find(
+async function assertProviderSessionAvailable(
+  record: SessionRecord,
+  stateDir: string | undefined,
+): Promise<void> {
+  const existing = (await destinationRecords(stateDir)).find(
     (session) => session.acpSessionId === record.acpSessionId,
   );
   if (!existing) {
@@ -302,7 +346,9 @@ export async function importSession(
   }
   assertExpectedAgentCommand(parsed, sourceRecord, options);
 
-  const sessionsDir = path.join(os.homedir(), ".acpx", "sessions");
+  const sessionsDir = options.stateDir
+    ? path.join(path.resolve(options.stateDir), "sessions")
+    : path.join(os.homedir(), ".acpx", "sessions");
   await fs.mkdir(sessionsDir, { recursive: true });
 
   const cwd = resolveImportedCwd(parsed.session.cwd_relative, options.newCwd);
@@ -313,14 +359,24 @@ export async function importSession(
     name: options.name,
   });
 
-  await assertDestinationScopeAvailable(newRecord);
-  await assertProviderSessionAvailable(newRecord);
-  await writeSessionRecord(newRecord);
+  newRecord.eventLog.active_path = path.join(
+    sessionsDir,
+    `${encodeURIComponent(newRecordId)}.stream.ndjson`,
+  );
+  await assertDestinationScopeAvailable(newRecord, options.stateDir);
+  await assertProviderSessionAvailable(newRecord, options.stateDir);
+  if (options.stateDir) {
+    await createFileSessionStore({ stateDir: options.stateDir }).save(newRecord);
+  } else {
+    await writeSessionRecord(newRecord);
+  }
 
   if (parsed.history.length > 0) {
     const history = parsed.history as AcpJsonRpcMessage[];
     await fs.writeFile(
-      sessionEventActivePath(newRecordId),
+      options.stateDir
+        ? path.join(sessionsDir, `${encodeURIComponent(newRecordId)}.stream.ndjson`)
+        : sessionEventActivePath(newRecordId),
       `${history.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
       "utf8",
     );

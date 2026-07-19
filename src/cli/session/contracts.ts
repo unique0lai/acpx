@@ -51,7 +51,11 @@ export type RunOnceOptions = {
   terminal?: boolean;
   outputFormatter: OutputFormatter;
   errorEmissionPolicy?: OutputErrorEmissionPolicy;
-  onAcpMessage?: (direction: AcpMessageDirection, message: AcpJsonRpcMessage) => void;
+  onAcpMessage?: (
+    direction: AcpMessageDirection,
+    message: AcpJsonRpcMessage,
+    connectionEpoch: string,
+  ) => void;
   onSessionUpdate?: (notification: SessionNotification) => void;
   onClientOperation?: (operation: ClientOperation) => void;
   onPermissionEscalation?: (event: PermissionEscalationEvent) => void;
@@ -92,7 +96,11 @@ export type SessionSendOptions = {
   authPolicy?: AuthPolicy;
   terminal?: boolean;
   outputFormatter: OutputFormatter;
-  onAcpMessage?: (direction: AcpMessageDirection, message: AcpJsonRpcMessage) => void;
+  onAcpMessage?: (
+    direction: AcpMessageDirection,
+    message: AcpJsonRpcMessage,
+    connectionEpoch: string,
+  ) => void;
   onSessionUpdate?: (notification: SessionNotification) => void;
   onClientOperation?: (operation: ClientOperation) => void;
   onPermissionEscalation?: (event: PermissionEscalationEvent) => void;

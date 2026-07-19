@@ -20,6 +20,10 @@ class FileSessionStore implements AcpSessionStore {
     return path.join(this.sessionDir, `${safeSessionId(sessionId)}.json`);
   }
 
+  private eventLogPath(sessionId: string): string {
+    return path.join(this.sessionDir, `${safeSessionId(sessionId)}.stream.ndjson`);
+  }
+
   private async ensureDir(): Promise<void> {
     await fs.mkdir(this.sessionDir, { recursive: true });
   }
@@ -41,11 +45,16 @@ class FileSessionStore implements AcpSessionStore {
     } catch {
       return undefined;
     }
-    return parseSessionRecord(parsed) ?? undefined;
+    const record = parseSessionRecord(parsed) ?? undefined;
+    if (record) {
+      record.eventLog.active_path = this.eventLogPath(record.acpxRecordId);
+    }
+    return record;
   }
 
   async save(record: AcpSessionRecord): Promise<void> {
     await this.ensureDir();
+    record.eventLog.active_path = this.eventLogPath(record.acpxRecordId);
     const persisted = serializeSessionRecordForDisk(record);
     assertPersistedKeyPolicy(persisted);
 

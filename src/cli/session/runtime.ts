@@ -780,9 +780,9 @@ async function runSessionPrompt(options: RunSessionPromptOptions): Promise<Sessi
     verbose: options.verbose,
   });
   client.setEventHandlers({
-    onAcpMessage: (direction, message) => {
+    onAcpMessage: (direction, message, connectionEpoch) => {
       pendingMessages.push(message);
-      options.onAcpMessage?.(direction, message);
+      options.onAcpMessage?.(direction, message, connectionEpoch);
     },
     onAcpOutputMessage: (direction, message) => {
       if (bufferingConnectOutput) {

@@ -219,7 +219,11 @@ export type AcpClientOptions = {
     systemPrompt?: string | { append: string };
     env?: Record<string, string>;
   };
-  onAcpMessage?: (direction: AcpMessageDirection, message: AcpJsonRpcMessage) => void;
+  onAcpMessage?: (
+    direction: AcpMessageDirection,
+    message: AcpJsonRpcMessage,
+    connectionEpoch: string,
+  ) => void;
   onAcpOutputMessage?: (direction: AcpMessageDirection, message: AcpJsonRpcMessage) => void;
   onSessionUpdate?: (notification: SessionNotification) => void;
   onClientOperation?: (operation: ClientOperation) => void;

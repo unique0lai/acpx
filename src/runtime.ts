@@ -18,6 +18,8 @@ import { createFileSessionStore } from "./runtime/public/file-session-store.js";
 import { decodeAcpxRuntimeHandleState, writeHandleState } from "./runtime/public/handle-state.js";
 import { normalizeRuntimeDetails, probeRuntime } from "./runtime/public/probe.js";
 import { deriveAgentFromSessionKey, type AcpxHandleState } from "./runtime/public/shared.js";
+export { importSession } from "./session/import.js";
+export type { ImportSessionOptions } from "./session/import.js";
 
 export { DEFAULT_AGENT_NAME, createFileSessionStore };
 export { AcpRuntimeError, isAcpRuntimeError } from "./runtime/public/errors.js";
@@ -169,6 +171,12 @@ export class AcpxRuntime implements AcpxRuntimeLike {
       agentSessionId: record.agentSessionId,
     });
     return handle;
+  }
+
+  async verifySession(input: { handle: AcpRuntimeHandle }): Promise<void> {
+    const { handle } = this.resolveManagerHandle(input.handle);
+    const manager = await this.getManager();
+    await manager.verifySession(handle);
   }
 
   startTurn(input: AcpRuntimeTurnInput) {
