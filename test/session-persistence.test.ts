@@ -121,6 +121,7 @@ test("listSessions preserves acpx desired_config_options", async () => {
         acpx: {
           desired_config_options: {
             reasoning_effort: "high",
+            auto_compact: true,
           },
         },
       }),
@@ -131,6 +132,7 @@ test("listSessions preserves acpx desired_config_options", async () => {
     assert.ok(record);
     assert.deepEqual(record.acpx?.desired_config_options, {
       reasoning_effort: "high",
+      auto_compact: true,
     });
   });
 });

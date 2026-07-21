@@ -6,7 +6,9 @@ import { advertisedModelState } from "../../session/model-state.js";
 import { absolutePath, isoNow } from "../../session/persistence.js";
 import type {
   AcpPermissionDecision,
+  AcpPermissionHandlerMode,
   AcpPermissionRequest,
+  AcpSessionConfigValue,
   AuthPolicy,
   McpServer,
   NonInteractivePermissionPolicy,
@@ -22,7 +24,7 @@ export type FullConnectedSessionController = ConnectedSessionController & {
   setSessionModel: (modelId: string) => Promise<SetSessionConfigOptionResponse | undefined>;
   setSessionConfigOption: (
     configId: string,
-    value: string,
+    value: AcpSessionConfigValue,
   ) => Promise<SetSessionConfigOptionResponse>;
 };
 
@@ -47,6 +49,7 @@ export type WithConnectedSessionOptions<T> = {
     req: AcpPermissionRequest,
     ctx: { signal: AbortSignal },
   ) => Promise<AcpPermissionDecision | undefined>;
+  permissionHandlerMode?: AcpPermissionHandlerMode;
   authCredentials?: Record<string, string>;
   authPolicy?: AuthPolicy;
   terminal?: boolean;
@@ -85,7 +88,7 @@ function createActiveSessionController(params: {
       applyConfigOptionsToRecord(params.record, response);
       return response;
     },
-    setSessionConfigOption: async (configId: string, value: string) => {
+    setSessionConfigOption: async (configId: string, value: AcpSessionConfigValue) => {
       return await params.client.setSessionConfigOption(getActiveSessionId(), configId, value);
     },
   };
@@ -103,6 +106,7 @@ export async function withConnectedSession<T>(
       permissionMode: options.permissionMode ?? "approve-reads",
       nonInteractivePermissions: options.nonInteractivePermissions,
       onPermissionRequest: options.onPermissionRequest,
+      permissionHandlerMode: options.permissionHandlerMode,
       authCredentials: options.authCredentials,
       authPolicy: options.authPolicy,
       terminal: options.terminal,
@@ -116,6 +120,7 @@ export async function withConnectedSession<T>(
       permissionMode: options.permissionMode ?? "approve-reads",
       nonInteractivePermissions: options.nonInteractivePermissions,
       onPermissionRequest: options.onPermissionRequest,
+      permissionHandlerMode: options.permissionHandlerMode,
       authCredentials: options.authCredentials,
       authPolicy: options.authPolicy,
       terminal: options.terminal,

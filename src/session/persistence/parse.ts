@@ -478,9 +478,9 @@ function assignDesiredConfigOptions(state: SessionAcpxState, raw: unknown): void
   }
 
   const parsed = Object.fromEntries(
-    Object.entries(desiredConfigOptions).filter((entry): entry is [string, string] => {
+    Object.entries(desiredConfigOptions).filter((entry): entry is [string, string | boolean] => {
       const [, value] = entry;
-      return typeof value === "string";
+      return typeof value === "string" || typeof value === "boolean";
     }),
   );
   if (Object.keys(parsed).length > 0) {

@@ -27,7 +27,7 @@ import {
   syncAdvertisedModelState,
 } from "../../session/mode-preference.js";
 import { clearAdvertisedModelState, removeModelConfigOptions } from "../../session/model-state.js";
-import type { SessionRecord, SessionResumePolicy } from "../../types.js";
+import type { AcpSessionConfigValue, SessionRecord, SessionResumePolicy } from "../../types.js";
 import {
   applyLifecycleSnapshotToRecord,
   reconcileAgentSessionId,
@@ -41,7 +41,7 @@ export type ConnectedSessionController = {
   setSessionModel: (modelId: string) => ReturnType<AcpClient["setSessionModel"]>;
   setSessionConfigOption: (
     configId: string,
-    value: string,
+    value: AcpSessionConfigValue,
   ) => ReturnType<AcpClient["setSessionConfigOption"]>;
 };
 
@@ -242,7 +242,7 @@ async function replayDesiredConfigOptions(params: {
   client: AcpClient;
   record: SessionRecord;
   sessionId: string;
-  desiredConfigOptions: Record<string, string>;
+  desiredConfigOptions: Record<string, AcpSessionConfigValue>;
   previousSessionId: string;
   timeoutMs?: number;
   verbose?: boolean;
@@ -469,7 +469,7 @@ async function replayFreshSessionPreferences(params: {
   originalAcpx: SessionRecord["acpx"];
   desiredModeId: string | undefined;
   desiredModelId: string | undefined;
-  desiredConfigOptions: Record<string, string>;
+  desiredConfigOptions: Record<string, AcpSessionConfigValue>;
   sessionModels: import("../../acp/client.js").SessionLoadResult["models"];
   timeoutMs?: number;
   verbose?: boolean;

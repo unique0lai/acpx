@@ -8,6 +8,7 @@ import {
   connectAndLoadSession,
   type ConnectedSessionController,
 } from "../src/runtime/engine/reconnect.js";
+import type { AcpSessionConfigValue } from "../src/types.js";
 import {
   makeSessionRecord as makeSessionRecordFixture,
   withTempHome as withTempHomeFixture,
@@ -66,7 +67,7 @@ type FakeClient = {
   setSessionConfigOption?: (
     sessionId: string,
     configId: string,
-    value: string,
+    value: AcpSessionConfigValue,
   ) => Promise<SetSessionConfigOptionResponse>;
 };
 
@@ -1096,11 +1097,16 @@ test("connectAndLoadSession replays desired config options on a fresh session", 
       acpx: {
         desired_config_options: {
           reasoning_effort: "high",
+          auto_compact: true,
         },
       },
     });
 
-    const configCalls: Array<{ sessionId: string; configId: string; value: string }> = [];
+    const configCalls: Array<{
+      sessionId: string;
+      configId: string;
+      value: AcpSessionConfigValue;
+    }> = [];
     const client: FakeClient = {
       hasReusableSession: () => false,
       start: async () => {},
@@ -1142,6 +1148,12 @@ test("connectAndLoadSession replays desired config options on a fresh session", 
               currentValue: "high",
               options: [{ value: "high", name: "High" }],
             },
+            {
+              id: "auto_compact",
+              name: "Automatic compaction",
+              type: "boolean",
+              currentValue: true,
+            },
           ],
         };
       },
@@ -1161,12 +1173,17 @@ test("connectAndLoadSession replays desired config options on a fresh session", 
         configId: "reasoning_effort",
         value: "high",
       },
+      {
+        sessionId: "fresh-session",
+        configId: "auto_compact",
+        value: true,
+      },
     ]);
     assert.equal(record.acpx?.current_model_id, "replayed-model");
     assert.equal(record.acpx?.model_control, "config_option");
     assert.deepEqual(
       record.acpx?.config_options?.map((option) => option.id),
-      ["llm", "reasoning_effort"],
+      ["llm", "reasoning_effort", "auto_compact"],
     );
   });
 });

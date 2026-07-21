@@ -1,5 +1,5 @@
 import { modelStateFromConfigOptions, type SessionModelState } from "../acp/model-support.js";
-import type { SessionAcpxState, SessionRecord } from "../types.js";
+import type { AcpSessionConfigValue, SessionAcpxState, SessionRecord } from "../types.js";
 import { applyAdvertisedModelState } from "./model-state.js";
 
 function ensureAcpxState(state: SessionAcpxState | undefined): SessionAcpxState {
@@ -28,7 +28,7 @@ export function getDesiredModeId(state: SessionAcpxState | undefined): string | 
 
 export function getDesiredConfigOptions(
   state: SessionAcpxState | undefined,
-): Record<string, string> {
+): Record<string, AcpSessionConfigValue> {
   const desired = state?.desired_config_options;
   if (!desired) {
     return {};
@@ -37,7 +37,9 @@ export function getDesiredConfigOptions(
   return Object.fromEntries(
     Object.entries(desired).flatMap(([configId, value]) => {
       const normalizedConfigId = normalizeModeId(configId);
-      return normalizedConfigId && typeof value === "string" ? [[normalizedConfigId, value]] : [];
+      return normalizedConfigId && (typeof value === "string" || typeof value === "boolean")
+        ? [[normalizedConfigId, value]]
+        : [];
     }),
   );
 }
@@ -58,7 +60,7 @@ export function setDesiredModeId(record: SessionRecord, modeId: string | undefin
 export function setDesiredConfigOption(
   record: SessionRecord,
   configId: string,
-  value: string | undefined,
+  value: AcpSessionConfigValue | undefined,
 ): void {
   const normalizedConfigId = normalizeModeId(configId);
   if (!normalizedConfigId || normalizedConfigId === "mode" || normalizedConfigId === "model") {
@@ -68,7 +70,7 @@ export function setDesiredConfigOption(
   const acpx = ensureAcpxState(record.acpx);
   const desired = { ...acpx.desired_config_options };
 
-  if (typeof value === "string") {
+  if (typeof value === "string" || typeof value === "boolean") {
     desired[normalizedConfigId] = value;
   } else {
     delete desired[normalizedConfigId];

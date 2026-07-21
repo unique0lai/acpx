@@ -1,5 +1,6 @@
 import type { SetSessionConfigOptionResponse } from "@agentclientprotocol/sdk";
 import { QueueConnectionError } from "../../errors.js";
+import type { AcpSessionConfigValue } from "../../types.js";
 
 export type QueueOwnerTurnState = "idle" | "starting" | "active" | "closing";
 
@@ -10,7 +11,7 @@ export type QueueOwnerActiveSessionController = {
   setSessionModel: (modelId: string) => Promise<SetSessionConfigOptionResponse | undefined>;
   setSessionConfigOption: (
     configId: string,
-    value: string,
+    value: AcpSessionConfigValue,
   ) => Promise<SetSessionConfigOptionResponse>;
 };
 

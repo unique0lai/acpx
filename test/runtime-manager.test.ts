@@ -10,6 +10,7 @@ import {
   sessionOptionsFromRecord,
 } from "../src/runtime/engine/session-options.js";
 import type {
+  AcpSessionConfigValue,
   AcpRuntimeEvent,
   AcpRuntimeHandle,
   AcpRuntimeTurn,
@@ -91,7 +92,7 @@ type FakeClient = {
   setSessionConfigOption: (
     sessionId: string,
     configId: string,
-    value: string,
+    value: AcpSessionConfigValue,
   ) => Promise<SetSessionConfigOptionResponse | void>;
   clearEventHandlers: () => void;
   setEventHandlers: (handlers: FakeClientHandlers) => void;
@@ -827,9 +828,14 @@ test("AcpRuntimeManager retains a reusable persistent client across turns", asyn
   assert.deepEqual(promptSessionIds, ["pooled-persistent-sid", "pooled-persistent-sid"]);
   assert.equal(closeCalls, 0);
 
+  await manager.disconnect(handle);
+  assert.equal(closeCalls, 1);
+  assert.equal((await store.load(record.acpxRecordId))?.closed, false);
+
   await manager.close(handle);
 
   assert.equal(closeCalls, 1);
+  assert.equal((await store.load(record.acpxRecordId))?.closed, true);
 });
 
 test("AcpRuntimeManager closeStream suppresses future live events while preserving terminal completion", async () => {
@@ -1519,6 +1525,82 @@ test("AcpRuntimeManager maps generic thinking config to refreshed advertised eff
   ]);
   const stored = await store.load("thinking-alias-session");
   assert.deepEqual(stored?.acpx?.desired_config_options, { effort: "high" });
+});
+
+test("AcpRuntimeManager persists boolean config desired and advertised state", async () => {
+  const record = makeSessionRecord({
+    acpxRecordId: "boolean-config-session",
+    acpSessionId: "boolean-config-backend-session",
+    agentCommand: "agent",
+    cwd: "/workspace",
+    acpx: {
+      config_options: [
+        {
+          id: "autoCompact",
+          name: "Automatic compaction",
+          type: "boolean",
+          currentValue: false,
+        },
+      ],
+    },
+  });
+  const store = new InMemorySessionStore([record]);
+  const setConfigCalls: Array<{ sessionId: string; key: string; value: boolean }> = [];
+  const manager = new AcpRuntimeManager(
+    createRuntimeOptions({ cwd: "/workspace", sessionStore: store }),
+    {
+      clientFactory: () =>
+        ({
+          start: async () => {},
+          close: async () => {},
+          hasReusableSession: () => false,
+          supportsLoadSession: () => true,
+          supportsResumeSession: () => false,
+          loadSessionWithOptions: async () => ({
+            configOptions: record.acpx?.config_options,
+          }),
+          getAgentLifecycleSnapshot: () => ({ running: true }),
+          requestCancelActivePrompt: async () => false,
+          hasActivePrompt: () => false,
+          setSessionMode: async () => {},
+          setSessionConfigOption: async (sessionId: string, key: string, value: boolean) => {
+            setConfigCalls.push({ sessionId, key, value });
+            return {
+              configOptions: [
+                {
+                  id: "autoCompact",
+                  name: "Automatic compaction",
+                  type: "boolean",
+                  currentValue: value,
+                },
+              ],
+            };
+          },
+          clearEventHandlers: () => {},
+          setEventHandlers: () => {},
+        }) as never,
+    },
+  );
+
+  await manager.setConfigOption(createHandle("boolean-config-session"), "autoCompact", true);
+
+  assert.deepEqual(setConfigCalls, [
+    {
+      sessionId: "boolean-config-backend-session",
+      key: "autoCompact",
+      value: true,
+    },
+  ]);
+  const stored = await store.load("boolean-config-session");
+  assert.deepEqual(stored?.acpx?.desired_config_options, { autoCompact: true });
+  assert.deepEqual(stored?.acpx?.config_options, [
+    {
+      id: "autoCompact",
+      name: "Automatic compaction",
+      type: "boolean",
+      currentValue: true,
+    },
+  ]);
 });
 
 test("AcpRuntimeManager persists advertised model config as desired model", async () => {
@@ -3054,8 +3136,13 @@ test("AcpRuntimeManager getStatus.models survives a save/reload cycle", async ()
 test("AcpRuntimeManager forwards sessionOptions to createClient on fresh session", async () => {
   const store = new InMemorySessionStore();
   const factoryCalls: Array<Record<string, unknown>> = [];
+  const onPermissionRequest = async () => ({ outcome: "cancelled" as const });
   const manager = new AcpRuntimeManager(
-    createRuntimeOptions({ cwd: "/workspace", sessionStore: store }),
+    {
+      ...createRuntimeOptions({ cwd: "/workspace", sessionStore: store }),
+      permissionHandlerMode: "authoritative",
+      onPermissionRequest,
+    },
     {
       clientFactory: (options) => {
         factoryCalls.push(options);
@@ -3091,6 +3178,8 @@ test("AcpRuntimeManager forwards sessionOptions to createClient on fresh session
 
   assert.equal(factoryCalls.length, 1);
   assert.deepEqual(factoryCalls[0]?.sessionOptions, { systemPrompt: "Be terse." });
+  assert.equal(factoryCalls[0]?.permissionHandlerMode, "authoritative");
+  assert.equal(factoryCalls[0]?.onPermissionRequest, onPermissionRequest);
   assert.deepEqual(record.acpx?.session_options, {
     model: undefined,
     allowed_tools: undefined,

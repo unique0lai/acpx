@@ -8,6 +8,11 @@ Repo: https://github.com/openclaw/acpx
 
 ### Changes
 
+- Runtime/embedding: support string and boolean ACP session config values across
+  transport, desired-state persistence, and reconnect replay.
+- Runtime/permissions: add an authoritative host permission handler mode that
+  accepts exact offered option IDs and fails closed on unavailable or invalid decisions.
+
 ### Breaking
 
 ### Fixes

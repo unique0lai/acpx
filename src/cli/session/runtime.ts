@@ -57,6 +57,7 @@ import {
 import type {
   AcpJsonRpcMessage,
   AcpMessageDirection,
+  AcpSessionConfigValue,
   AuthPolicy,
   McpServer,
   NonInteractivePermissionPolicy,
@@ -833,7 +834,7 @@ async function runSessionPrompt(options: RunSessionPromptOptions): Promise<Sessi
       acpxState = nextState;
       return response;
     },
-    setSessionConfigOption: async (configId: string, value: string) => {
+    setSessionConfigOption: async (configId: string, value: AcpSessionConfigValue) => {
       const response = await client.setSessionConfigOption(
         activeSessionIdForControl,
         configId,
@@ -842,11 +843,11 @@ async function runSessionPrompt(options: RunSessionPromptOptions): Promise<Sessi
       acpxState = applyConfigOptionResponseToState(acpxState, response);
       const nextState = cloneSessionAcpxState(acpxState) ?? {};
       const modelConfigId = modelStateFromConfigOptions(nextState.config_options)?.configId;
-      if (configId === modelConfigId) {
+      if (typeof value === "string" && configId === modelConfigId) {
         nextState.session_options = { ...nextState.session_options, model: value };
         nextState.current_model_id = currentModelIdFromSetModelResponse(response, value);
         clearDesiredConfigOption(nextState, configId);
-      } else if (configId === "mode") {
+      } else if (typeof value === "string" && configId === "mode") {
         nextState.desired_mode_id = value;
       } else {
         nextState.desired_config_options = {

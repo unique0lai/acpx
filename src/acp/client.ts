@@ -61,6 +61,7 @@ import type {
   AcpClientOptions,
   AcpJsonRpcMessage,
   AcpMessageDirection,
+  AcpSessionConfigValue,
   NonInteractivePermissionPolicy,
   PermissionMode,
   PermissionStats,
@@ -216,6 +217,16 @@ function normalizeResponseConfigOptions(
     return undefined;
   }
   return response.configOptions ?? [];
+}
+
+function isAuthoritativePermissionDecision(
+  decision: Parameters<typeof decisionToResponse>[1],
+): boolean {
+  return (
+    decision.outcome === "selected" ||
+    decision.outcome === "cancelled" ||
+    decision.outcome === "cancel"
+  );
 }
 
 function toReconnectedSessionResult(
@@ -1133,22 +1144,24 @@ export class AcpClient {
   async setSessionConfigOption(
     sessionId: string,
     configId: string,
-    value: string,
+    value: AcpSessionConfigValue,
   ): Promise<SetSessionConfigOptionResponse> {
     const connection = this.getConnection();
     try {
+      const valueParams =
+        typeof value === "boolean" ? { type: "boolean" as const, value } : { value };
       return await this.runConnectionRequest(() =>
         connection.setSessionConfigOption({
           sessionId,
           configId,
-          value,
+          ...valueParams,
         }),
       );
     } catch (error) {
       throw maybeWrapSessionControlError(
         "session/set_config_option",
         error,
-        `for "${configId}"="${value}"`,
+        `for "${configId}"=${JSON.stringify(value)}`,
       );
     }
   }
@@ -1707,7 +1720,9 @@ export class AcpClient {
     params: RequestPermissionRequest,
   ): Promise<RequestPermissionResponse | undefined> {
     if (!this.options.onPermissionRequest) {
-      return undefined;
+      return this.options.permissionHandlerMode === "authoritative"
+        ? this.failClosedHostPermission("authoritative permission handler is unavailable")
+        : undefined;
     }
     const signal = this.cancellationSignalForSession(params.sessionId);
     try {
@@ -1735,7 +1750,17 @@ export class AcpClient {
       return cancelledPermissionResponse();
     }
     if (!decision) {
-      return undefined;
+      return this.options.permissionHandlerMode === "authoritative"
+        ? this.failClosedHostPermission("authoritative permission handler returned no decision")
+        : undefined;
+    }
+    if (
+      this.options.permissionHandlerMode === "authoritative" &&
+      !isAuthoritativePermissionDecision(decision)
+    ) {
+      return this.failClosedHostPermission(
+        "authoritative permission handler must select an exact optionId or cancel",
+      );
     }
     const response = decisionToResponse(params, decision);
     this.recordPermissionDecision(classifyPermissionDecision(params, response));
@@ -1751,14 +1776,20 @@ export class AcpClient {
       this.recordPermissionDecision("cancelled");
       return cancelledPermissionResponse();
     }
-    // Fall through to the mode-based resolver so a host UI error
-    // doesn't take down the turn.
-    this.log(
-      `onPermissionRequest threw, falling through to mode-based resolver: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
+    const message = error instanceof Error ? error.message : String(error);
+    if (this.options.permissionHandlerMode === "authoritative") {
+      return this.failClosedHostPermission(`authoritative permission handler threw: ${message}`);
+    }
+    // Preserve the local CLI behavior: a host UI error falls through to the
+    // configured mode-based resolver instead of taking down the turn.
+    this.log(`onPermissionRequest threw, falling through to mode-based resolver: ${message}`);
     return undefined;
+  }
+
+  private failClosedHostPermission(reason: string): RequestPermissionResponse {
+    this.log(`${reason}; cancelling permission request`);
+    this.recordPermissionDecision("cancelled");
+    return cancelledPermissionResponse();
   }
 
   private async resolvePermissionRequestFromMode(

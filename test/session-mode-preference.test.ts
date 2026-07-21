@@ -42,19 +42,23 @@ test("setDesiredConfigOption persists non-mode config option preferences", () =>
   const record = makeSessionRecord();
 
   setDesiredConfigOption(record, " reasoning_effort ", "high");
+  setDesiredConfigOption(record, "auto_compact", true);
   setDesiredConfigOption(record, "mode", "plan");
   setDesiredConfigOption(record, "model", "gpt-5.4");
 
   assert.deepEqual(record.acpx, {
     desired_config_options: {
       reasoning_effort: "high",
+      auto_compact: true,
     },
   });
   assert.deepEqual(getDesiredConfigOptions(record.acpx), {
     reasoning_effort: "high",
+    auto_compact: true,
   });
 
   setDesiredConfigOption(record, "reasoning_effort", undefined);
+  setDesiredConfigOption(record, "auto_compact", undefined);
   assert.deepEqual(record.acpx, {});
 });
 

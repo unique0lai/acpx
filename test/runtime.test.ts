@@ -87,6 +87,7 @@ test("AcpxRuntime delegates session lifecycle to the runtime manager", async () 
   let closedStreamRequestId: string | undefined;
   let cancelCalls = 0;
   let managerCancelCalls = 0;
+  let managerDisconnectCalls = 0;
   let verifiedRecordId: string | undefined;
   let closeDiscardPersistentState: boolean | undefined;
   const manager = {
@@ -138,6 +139,9 @@ test("AcpxRuntime delegates session lifecycle to the runtime manager", async () 
     setConfigOption: async () => {},
     cancel: async () => {
       managerCancelCalls += 1;
+    },
+    disconnect: async () => {
+      managerDisconnectCalls += 1;
     },
     close: async (_handle: unknown, options?: { discardPersistentState?: boolean }) => {
       closeDiscardPersistentState = options?.discardPersistentState;
@@ -205,12 +209,14 @@ test("AcpxRuntime delegates session lifecycle to the runtime manager", async () 
   await runtime.setMode({ handle, mode: "architect" });
   await runtime.setConfigOption({ handle, key: "approval", value: "manual" });
   await runtime.cancel({ handle, reason: "legacy cancel" });
+  await runtime.disconnect({ handle, reason: "replace transport" });
   await turn.closeStream({ reason: "observer closed stream" });
   await turn.cancel();
   await runtime.close({ handle, reason: "test", discardPersistentState: true });
   assert.equal(closedStreamRequestId, "req-1");
   assert.equal(cancelCalls, 1);
   assert.equal(managerCancelCalls, 1);
+  assert.equal(managerDisconnectCalls, 1);
   assert.equal(verifiedRecordId, "agent:codex:acp:test");
   assert.equal(closeDiscardPersistentState, true);
 });

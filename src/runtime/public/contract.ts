@@ -3,7 +3,9 @@ import type {
   AcpJsonRpcMessage,
   AcpMessageDirection,
   AcpPermissionDecision,
+  AcpPermissionHandlerMode,
   AcpPermissionRequest,
+  AcpSessionConfigValue,
   McpServer,
   NonInteractivePermissionPolicy,
   PermissionMode,
@@ -13,7 +15,12 @@ import type { SessionAgentOptions } from "../engine/session-options.js";
 
 export type { SessionAgentOptions, SystemPromptOption } from "../engine/session-options.js";
 
-export type { AcpPermissionDecision, AcpPermissionRequest } from "../../types.js";
+export type {
+  AcpPermissionDecision,
+  AcpPermissionHandlerMode,
+  AcpPermissionRequest,
+  AcpSessionConfigValue,
+} from "../../types.js";
 
 export type AcpRuntimePromptMode = "prompt" | "steer";
 
@@ -276,9 +283,18 @@ export interface AcpRuntime {
   }): Promise<AcpRuntimeCapabilities> | AcpRuntimeCapabilities;
   getStatus?(input: { handle: AcpRuntimeHandle; signal?: AbortSignal }): Promise<AcpRuntimeStatus>;
   setMode?(input: { handle: AcpRuntimeHandle; mode: string }): Promise<void>;
-  setConfigOption?(input: { handle: AcpRuntimeHandle; key: string; value: string }): Promise<void>;
+  setConfigOption?(input: {
+    handle: AcpRuntimeHandle;
+    key: string;
+    value: AcpSessionConfigValue;
+  }): Promise<void>;
   doctor?(): Promise<AcpRuntimeDoctorReport>;
   cancel(input: { handle: AcpRuntimeHandle; reason?: string }): Promise<void>;
+  /**
+   * Close only this runtime's local transport/process for a persistent
+   * session. The durable record and Provider session remain resumable.
+   */
+  disconnect(input: { handle: AcpRuntimeHandle; reason?: string }): Promise<void>;
   close(input: {
     handle: AcpRuntimeHandle;
     reason: string;
@@ -322,6 +338,12 @@ export type AcpRuntimeOptions = {
     req: AcpPermissionRequest,
     ctx: { signal: AbortSignal },
   ) => Promise<AcpPermissionDecision | undefined>;
+  /**
+   * `fallback` preserves the local CLI behavior: an absent or failed host
+   * callback falls through to PermissionMode. Remote orchestrators should use
+   * `authoritative`, which treats every invalid host result as cancelled.
+   */
+  permissionHandlerMode?: AcpPermissionHandlerMode;
 };
 
 export type AcpFileSessionStoreOptions = {

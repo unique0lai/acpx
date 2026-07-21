@@ -11,6 +11,7 @@ import type {
   AcpRuntimeOptions,
   AcpRuntimeStatus,
   AcpRuntimeTurnInput,
+  AcpSessionConfigValue,
   AcpSessionStore,
 } from "./runtime/public/contract.js";
 import { AcpRuntimeError } from "./runtime/public/errors.js";
@@ -42,6 +43,7 @@ export type {
   AcpAgentRegistry,
   AcpFileSessionStoreOptions,
   AcpPermissionDecision,
+  AcpPermissionHandlerMode,
   AcpPermissionRequest,
   AcpRuntime,
   AcpRuntimeAvailableCommand,
@@ -63,6 +65,7 @@ export type {
   AcpRuntimeTurnResultError,
   AcpRuntimeUsageBreakdown,
   AcpRuntimeUsageCost,
+  AcpSessionConfigValue,
   AcpSessionRecord,
   AcpSessionStore,
   AcpSessionUpdateTag,
@@ -272,7 +275,7 @@ export class AcpxRuntime implements AcpxRuntimeLike {
   async setConfigOption(input: {
     handle: AcpRuntimeHandle;
     key: string;
-    value: string;
+    value: AcpSessionConfigValue;
   }): Promise<void> {
     const { handle, state } = this.resolveManagerHandle(input.handle);
     const manager = await this.getManager();
@@ -283,6 +286,12 @@ export class AcpxRuntime implements AcpxRuntimeLike {
     const { handle } = this.resolveManagerHandle(input.handle);
     const manager = await this.getManager();
     await manager.cancel(handle);
+  }
+
+  async disconnect(input: { handle: AcpRuntimeHandle; reason?: string }): Promise<void> {
+    const { handle } = this.resolveManagerHandle(input.handle);
+    const manager = await this.getManager();
+    await manager.disconnect(handle);
   }
 
   async close(input: {

@@ -35,6 +35,7 @@ import {
 } from "../../session/model-application.js";
 import { advertisedModelState } from "../../session/model-state.js";
 import type {
+  AcpSessionConfigValue,
   ClientOperation,
   SessionRecord,
   SessionResumePolicy,
@@ -82,11 +83,11 @@ type ActiveSessionController = {
   setSessionModel: (modelId: string) => ReturnType<AcpClient["setSessionModel"]>;
   setSessionConfigOption: (
     configId: string,
-    value: string,
+    value: AcpSessionConfigValue,
   ) => ReturnType<AcpClient["setSessionConfigOption"]>;
   setResolvedSessionConfigOption: (
     configId: string,
-    value: string,
+    value: AcpSessionConfigValue,
   ) => Promise<{
     configId: string;
     response: Awaited<ReturnType<AcpClient["setSessionConfigOption"]>>;
@@ -492,14 +493,14 @@ function applyConfigOptionResponseToTurn(
 function applyDesiredConfigOptionToTurn(
   turn: RunningRuntimeTurn,
   configId: string,
-  value: string,
+  value: AcpSessionConfigValue,
 ): void {
   const nextState = cloneSessionAcpxState(turn.acpxState) ?? {};
   const modelConfigId = modelStateFromConfigOptions(nextState.config_options)?.configId;
-  if (configId === modelConfigId) {
+  if (typeof value === "string" && configId === modelConfigId) {
     nextState.session_options = { ...nextState.session_options, model: value };
     clearDesiredConfigOption(nextState, configId);
-  } else if (configId === "mode") {
+  } else if (typeof value === "string" && configId === "mode") {
     nextState.desired_mode_id = value;
   } else {
     nextState.desired_config_options = {
@@ -513,12 +514,12 @@ function applyDesiredConfigOptionToTurn(
 function applyDesiredConfigOptionToRecord(
   record: SessionRecord,
   configId: string,
-  value: string,
+  value: AcpSessionConfigValue,
 ): void {
   const modelConfigId = modelStateFromConfigOptions(record.acpx?.config_options)?.configId;
-  if (configId === modelConfigId) {
+  if (typeof value === "string" && configId === modelConfigId) {
     setDesiredModelId(record, value, configId);
-  } else if (configId === "mode") {
+  } else if (typeof value === "string" && configId === "mode") {
     setDesiredModeId(record, value);
   } else {
     setDesiredConfigOption(record, configId, value);
@@ -669,6 +670,7 @@ export class AcpRuntimeManager {
       permissionMode: this.options.permissionMode,
       nonInteractivePermissions: this.options.nonInteractivePermissions,
       onPermissionRequest: this.options.onPermissionRequest,
+      permissionHandlerMode: this.options.permissionHandlerMode,
       verbose: this.options.verbose,
       timeoutMs: this.options.timeoutMs,
       resumePolicy: resumePolicyForSessionMode(sessionMode),
@@ -716,6 +718,7 @@ export class AcpRuntimeManager {
       permissionMode: this.options.permissionMode,
       nonInteractivePermissions: this.options.nonInteractivePermissions,
       onPermissionRequest: this.options.onPermissionRequest,
+      permissionHandlerMode: this.options.permissionHandlerMode,
       verbose: this.options.verbose,
       sessionOptions: input.sessionOptions,
     });
@@ -971,6 +974,7 @@ export class AcpRuntimeManager {
       permissionMode: this.options.permissionMode,
       nonInteractivePermissions: this.options.nonInteractivePermissions,
       onPermissionRequest: this.options.onPermissionRequest,
+      permissionHandlerMode: this.options.permissionHandlerMode,
       verbose: this.options.verbose,
       sessionOptions: sessionOptionsFromRecord(record),
     });
@@ -1018,14 +1022,14 @@ export class AcpRuntimeManager {
         turn.acpxState = nextState;
         return response;
       },
-      setSessionConfigOption: async (configId: string, value: string) => {
+      setSessionConfigOption: async (configId: string, value: AcpSessionConfigValue) => {
         const result = await task.state.activeController!.setResolvedSessionConfigOption(
           configId,
           value,
         );
         return result.response;
       },
-      setResolvedSessionConfigOption: async (configId: string, value: string) =>
+      setResolvedSessionConfigOption: async (configId: string, value: AcpSessionConfigValue) =>
         await this.setRuntimeResolvedSessionConfigOption(task, turn, configId, value),
     };
   }
@@ -1058,7 +1062,7 @@ export class AcpRuntimeManager {
     task: RuntimeTurnTask,
     turn: RunningRuntimeTurn,
     configId: string,
-    value: string,
+    value: AcpSessionConfigValue,
   ): Promise<{
     configId: string;
     response: Awaited<ReturnType<AcpClient["setSessionConfigOption"]>>;
@@ -1083,7 +1087,7 @@ export class AcpRuntimeManager {
   private applyRuntimeConfigOptionState(
     turn: RunningRuntimeTurn,
     configId: string,
-    value: string,
+    value: AcpSessionConfigValue,
     response: Awaited<ReturnType<AcpClient["setSessionConfigOption"]>>,
   ): void {
     applyConfigOptionResponseToTurn(turn, response);
@@ -1327,6 +1331,7 @@ export class AcpRuntimeManager {
       permissionMode: this.options.permissionMode,
       nonInteractivePermissions: this.options.nonInteractivePermissions,
       onPermissionRequest: this.options.onPermissionRequest,
+      permissionHandlerMode: this.options.permissionHandlerMode,
       verbose: this.options.verbose,
       timeoutMs: this.options.timeoutMs,
       resumePolicy: "same-session-only",
@@ -1361,7 +1366,7 @@ export class AcpRuntimeManager {
   async setConfigOption(
     handle: AcpRuntimeHandle,
     key: string,
-    value: string,
+    value: AcpSessionConfigValue,
     sessionMode: "persistent" | "oneshot" = "persistent",
   ): Promise<void> {
     const record = await this.requireRecord(handle.acpxRecordId ?? handle.sessionKey);
@@ -1390,6 +1395,27 @@ export class AcpRuntimeManager {
   async cancel(handle: AcpRuntimeHandle): Promise<void> {
     const controller = this.activeControllers.get(handle.acpxRecordId ?? handle.sessionKey);
     await controller?.requestCancelActivePrompt();
+  }
+
+  async disconnect(handle: AcpRuntimeHandle): Promise<void> {
+    const record = await this.requireRecord(handle.acpxRecordId ?? handle.sessionKey);
+    if (this.activeControllers.has(record.acpxRecordId)) {
+      throw new AcpRuntimeError(
+        "ACP_BACKEND_UNSUPPORTED_CONTROL",
+        `Cannot disconnect ACP session ${record.acpxRecordId} while a prompt is active.`,
+      );
+    }
+    const pendingClient = this.pendingPersistentClients.get(record.acpxRecordId);
+    if (!pendingClient) {
+      return;
+    }
+    // Unlike shutdown cleanup, reconnect fencing must know whether the old
+    // transport really closed. Retain it on failure so the caller cannot
+    // discard its only cleanup handle and may safely retry.
+    await pendingClient.close();
+    if (this.pendingPersistentClients.get(record.acpxRecordId) === pendingClient) {
+      this.pendingPersistentClients.delete(record.acpxRecordId);
+    }
   }
 
   async close(
@@ -1427,6 +1453,7 @@ export class AcpRuntimeManager {
         permissionMode: this.options.permissionMode,
         nonInteractivePermissions: this.options.nonInteractivePermissions,
         onPermissionRequest: this.options.onPermissionRequest,
+        permissionHandlerMode: this.options.permissionHandlerMode,
         verbose: this.options.verbose,
       });
 

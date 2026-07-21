@@ -624,6 +624,90 @@ test("AcpClient onPermissionRequest throws fall through to mode-based resolver",
   assert.equal(callbackInvocations, 1);
 });
 
+test("AcpClient authoritative permission handler selects an exact offered option", async () => {
+  const client = makeClient({
+    permissionMode: "deny-all",
+    permissionHandlerMode: "authoritative",
+    onPermissionRequest: async () => ({ outcome: "selected", optionId: "allow" }),
+  });
+
+  const response = await asInternals(client).handlePermissionRequest?.(
+    makePermissionRequest("session-authoritative-exact", "edit"),
+  );
+
+  assert.deepEqual(response, {
+    outcome: {
+      outcome: "selected",
+      optionId: "allow",
+    },
+  });
+});
+
+test("AcpClient authoritative permission handler fails closed on invalid decisions", async (t) => {
+  const cases: Array<{
+    name: string;
+    onPermissionRequest?: ConstructorParameters<typeof AcpClient>[0]["onPermissionRequest"];
+  }> = [
+    {
+      name: "missing callback",
+    },
+    {
+      name: "undefined decision",
+      onPermissionRequest: async () => undefined,
+    },
+    {
+      name: "unknown option",
+      onPermissionRequest: async () => ({ outcome: "selected", optionId: "not-offered" }),
+    },
+    {
+      name: "semantic fallback decision",
+      onPermissionRequest: async () => ({ outcome: "allow_once" }),
+    },
+    {
+      name: "callback error",
+      onPermissionRequest: async () => {
+        throw new Error("remote approval service unavailable");
+      },
+    },
+  ];
+
+  for (const entry of cases) {
+    await t.test(entry.name, async () => {
+      const client = makeClient({
+        permissionMode: "approve-all",
+        permissionHandlerMode: "authoritative",
+        onPermissionRequest: entry.onPermissionRequest,
+      });
+
+      const response = await asInternals(client).handlePermissionRequest?.(
+        makePermissionRequest(`session-authoritative-${entry.name}`, "edit"),
+      );
+
+      assert.deepEqual(response, { outcome: { outcome: "cancelled" } });
+      assert.deepEqual(client.getPermissionStats(), {
+        requested: 1,
+        approved: 0,
+        denied: 0,
+        cancelled: 1,
+      });
+    });
+  }
+});
+
+test("AcpClient authoritative permission handler accepts an explicit cancellation", async () => {
+  const client = makeClient({
+    permissionMode: "approve-all",
+    permissionHandlerMode: "authoritative",
+    onPermissionRequest: async () => ({ outcome: "cancelled" }),
+  });
+
+  const response = await asInternals(client).handlePermissionRequest?.(
+    makePermissionRequest("session-authoritative-cancelled", "edit"),
+  );
+
+  assert.deepEqual(response, { outcome: { outcome: "cancelled" } });
+});
+
 test("AcpClient onPermissionRequest receives an AbortSignal that fires on session cancel", async () => {
   let observedSignal: AbortSignal | undefined;
   const client = makeClient({
@@ -963,6 +1047,34 @@ test("AcpClient createSession forwards codex model metadata without setting it e
     },
   });
   assert.equal(setConfigCalled, false);
+});
+
+test("AcpClient setSessionConfigOption emits ACP select and boolean wire values", async () => {
+  const client = makeClient();
+  const captured: unknown[] = [];
+  asInternals(client).connection = {
+    setSessionConfigOption: async (params: unknown) => {
+      captured.push(params);
+      return { configOptions: [] };
+    },
+  };
+
+  await client.setSessionConfigOption("session-config", "effort", "high");
+  await client.setSessionConfigOption("session-config", "autoCompact", true);
+
+  assert.deepEqual(captured, [
+    {
+      sessionId: "session-config",
+      configId: "effort",
+      value: "high",
+    },
+    {
+      sessionId: "session-config",
+      configId: "autoCompact",
+      type: "boolean",
+      value: true,
+    },
+  ]);
 });
 
 test("AcpClient setSessionModel uses the model session config option", async () => {

@@ -24,7 +24,14 @@ export type AcpPermissionDecision =
   | { outcome: "allow_always" }
   | { outcome: "reject_once" }
   | { outcome: "reject_always" }
-  | { outcome: "cancel" };
+  | { outcome: "cancel" }
+  | { outcome: "selected"; optionId: string }
+  | { outcome: "cancelled" };
+
+export const ACP_PERMISSION_HANDLER_MODES = ["fallback", "authoritative"] as const;
+export type AcpPermissionHandlerMode = (typeof ACP_PERMISSION_HANDLER_MODES)[number];
+
+export type AcpSessionConfigValue = string | boolean;
 
 export const EXIT_CODES = {
   SUCCESS: 0,
@@ -232,6 +239,7 @@ export type AcpClientOptions = {
     req: AcpPermissionRequest,
     ctx: { signal: AbortSignal },
   ) => Promise<AcpPermissionDecision | undefined>;
+  permissionHandlerMode?: AcpPermissionHandlerMode;
 };
 
 export const SESSION_RECORD_SCHEMA = "acpx.session.v1" as const;
@@ -360,7 +368,7 @@ export type SessionAcpxState = {
   reset_on_next_ensure?: boolean;
   current_mode_id?: string;
   desired_mode_id?: string;
-  desired_config_options?: Record<string, string>;
+  desired_config_options?: Record<string, AcpSessionConfigValue>;
   current_model_id?: string;
   available_models?: string[];
   model_control?: "config_option" | "legacy_set_model";

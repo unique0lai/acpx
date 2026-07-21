@@ -399,8 +399,14 @@ export async function resolvePermissionRequestWithDetails(
   return resolveReadOrPromptPermission(params, nonInteractivePolicy, allowOption, rejectOption);
 }
 
+type SemanticPermissionDecisionOutcome =
+  | "allow_once"
+  | "allow_always"
+  | "reject_once"
+  | "reject_always";
+
 const DECISION_FALLBACK_ORDER: Record<
-  Exclude<AcpPermissionDecision["outcome"], "cancel">,
+  SemanticPermissionDecisionOutcome,
   PermissionOption["kind"][]
 > = {
   allow_once: ["allow_once", "allow_always"],
@@ -413,8 +419,13 @@ export function decisionToResponse(
   params: RequestPermissionRequest,
   decision: AcpPermissionDecision,
 ): RequestPermissionResponse {
-  if (decision.outcome === "cancel") {
+  if (decision.outcome === "cancel" || decision.outcome === "cancelled") {
     return cancelled();
+  }
+  if (decision.outcome === "selected") {
+    return params.options.some((option) => option.optionId === decision.optionId)
+      ? selected(decision.optionId)
+      : cancelled();
   }
   const matched = pickOption(params.options ?? [], DECISION_FALLBACK_ORDER[decision.outcome]);
   return matched ? selected(matched.optionId) : cancelled();
